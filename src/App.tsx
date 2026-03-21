@@ -76,6 +76,7 @@ function AuthenticatedApp() {
               onSave={addLog}
               onUpdate={updateLog}
               onNavigate={v => setActiveView(v)}
+              parentEmail={user!.email}
             />
           )}
 

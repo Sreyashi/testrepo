@@ -8,7 +8,21 @@ export interface Child {
   therapistEmail?: string;
   notes?: string;
   avatar?: string;
+  reminderEmail?: string;
+  reminderEnabled?: boolean;
   createdAt: string;
+}
+
+export interface AgentInsight {
+  status: 'loading' | 'done' | 'error';
+  overallTrend: 'improving' | 'declining' | 'stable';
+  vsYesterday: string;
+  vsLastWeek: string;
+  therapyRecommendation: 'on_track' | 'review_recommended' | 'change_recommended';
+  therapyMessage: string;
+  keyObservations: string[];
+  actionItems: string[];
+  error?: string;
 }
 
 export interface BehaviorRating {

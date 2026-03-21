@@ -13,7 +13,7 @@ import {
   CheckCircle2,
   Star,
 } from 'lucide-react';
-import type { Child, BehaviorLog, BehaviorRating } from '../types';
+import type { Child, BehaviorLog, BehaviorRating, AgentInsight } from '../types';
 import {
   POSITIVE_OBSERVATIONS,
   CHALLENGING_BEHAVIORS,
@@ -24,6 +24,7 @@ import {
   RATING_LABELS,
   DAY_RATING_CONFIG,
 } from '../types';
+import AgentInsights from './AgentInsights';
 
 interface LogEntryProps {
   children: Child[];
@@ -33,6 +34,7 @@ interface LogEntryProps {
   onSave: (log: BehaviorLog) => void;
   onUpdate: (id: string, updates: Partial<BehaviorLog>) => void;
   onNavigate: (view: 'profiles') => void;
+  parentEmail?: string;
 }
 
 const DEFAULT_RATINGS: BehaviorRating = {
@@ -56,6 +58,7 @@ export default function LogEntry({
   onSave,
   onUpdate,
   onNavigate,
+  parentEmail,
 }: LogEntryProps) {
   const [date, setDate] = useState(format(new Date(), 'yyyy-MM-dd'));
   const [openSections, setOpenSections] = useState<Section[]>(['ratings', 'observations']);
@@ -90,6 +93,7 @@ export default function LogEntry({
     existingLog?.environment ?? 'home'
   );
   const [saved, setSaved] = useState(false);
+  const [agentInsight, setAgentInsight] = useState<AgentInsight | null>(null);
 
   // Reset form when date or child changes
   useEffect(() => {
@@ -152,6 +156,78 @@ export default function LogEntry({
     }
     setSaved(true);
     setTimeout(() => setSaved(false), 3000);
+
+    // Fire Agent 2 (email therapist) + Agent 3 (analysis) in parallel
+    const childProfile = children.find(c => c.id === selectedChildId);
+    if (childProfile) {
+      runAgents(logData, childProfile);
+    }
+  };
+
+  const runAgents = async (logData: BehaviorLog, childProfile: Child) => {
+    // Collect historical logs (sorted newest first, exclude today)
+    const allChildLogs = logs
+      .filter(l => l.childId === childProfile.id && l.date !== logData.date)
+      .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+
+    const previousDay = allChildLogs[0] ?? undefined;
+    const previousWeekLogs = allChildLogs.slice(0, 14); // up to 14 days
+    const recentLogsForEmail = allChildLogs.slice(0, 7);
+
+    // Show loading state for Agent 3
+    setAgentInsight({ status: 'loading' } as AgentInsight);
+
+    // Agent 2: Email therapist (fire and forget — no need to await for UX)
+    if (childProfile.therapistEmail) {
+      fetch('/api/send-therapist-email', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          childName: childProfile.name,
+          therapistName: childProfile.therapistName ?? 'Therapist',
+          therapistEmail: childProfile.therapistEmail,
+          parentEmail: parentEmail ?? '',
+          currentLog: logData,
+          recentLogs: recentLogsForEmail,
+        }),
+      }).catch(err => console.warn('[Agent 2] Email send failed:', err));
+    }
+
+    // Agent 3: Progress analysis with Claude (await for UI update)
+    try {
+      const res = await fetch('/api/analyze-progress', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          childName: childProfile.name,
+          currentLog: logData,
+          previousDay,
+          previousWeekLogs,
+          therapistName: childProfile.therapistName,
+          medications: childProfile.medications,
+        }),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const result = await res.json();
+      setAgentInsight({ status: 'done', ...result });
+
+      // Agent 1: Update last log date for reminder system
+      if (childProfile.reminderEnabled && childProfile.reminderEmail) {
+        fetch('/api/subscribe-reminder', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            action: 'update_log_date',
+            email: childProfile.reminderEmail,
+            childName: childProfile.name,
+            lastLogDate: logData.date,
+          }),
+        }).catch(() => {});
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Analysis failed';
+      setAgentInsight({ status: 'error', error: message } as AgentInsight);
+    }
   };
 
   if (children.length === 0) {
@@ -540,6 +616,17 @@ export default function LogEntry({
           <><Save size={18} /> {existingLog ? 'Update Entry' : 'Save Entry'}</>
         )}
       </button>
+
+      {/* Agent 3: AI Insights (shown after save) */}
+      {agentInsight && <AgentInsights insight={agentInsight} />}
+
+      {/* Agent 2: Email status indicator */}
+      {saved && child?.therapistEmail && (
+        <div className="flex items-center gap-2 justify-center text-xs text-emerald-600">
+          <CheckCircle2 size={14} />
+          <span>Report sent to {child.therapistName ?? 'therapist'}</span>
+        </div>
+      )}
     </div>
   );
 }

@@ -11,6 +11,8 @@ import {
   Pill,
   UserPlus,
   CheckCircle2,
+  Bell,
+  BellOff,
 } from 'lucide-react';
 import type { Child } from '../types';
 
@@ -42,6 +44,8 @@ type FormData = {
   therapistName: string;
   therapistEmail: string;
   notes: string;
+  reminderEmail: string;
+  reminderEnabled: boolean;
 };
 
 const EMPTY_FORM: FormData = {
@@ -52,6 +56,8 @@ const EMPTY_FORM: FormData = {
   therapistName: '',
   therapistEmail: '',
   notes: '',
+  reminderEmail: '',
+  reminderEnabled: false,
 };
 
 export default function Profiles({
@@ -87,6 +93,8 @@ export default function Profiles({
       therapistName: child.therapistName || '',
       therapistEmail: child.therapistEmail || '',
       notes: child.notes || '',
+      reminderEmail: child.reminderEmail || '',
+      reminderEnabled: child.reminderEnabled ?? false,
     });
     setEditingId(child.id);
     setErrors({});
@@ -109,30 +117,53 @@ export default function Profiles({
       .map(m => m.trim())
       .filter(Boolean);
 
+    const reminderEmail = form.reminderEmail.trim() || undefined;
+    const reminderEnabled = form.reminderEnabled && !!reminderEmail;
+    const childName = form.name.trim();
+
     if (editingId) {
       onUpdate(editingId, {
-        name: form.name.trim(),
+        name: childName,
         dateOfBirth: form.dateOfBirth,
         diagnosisDate: form.diagnosisDate || undefined,
         medications,
         therapistName: form.therapistName.trim() || undefined,
         therapistEmail: form.therapistEmail.trim() || undefined,
         notes: form.notes.trim() || undefined,
+        reminderEmail,
+        reminderEnabled,
       });
     } else {
       const newChild: Child = {
         id: uuidv4(),
-        name: form.name.trim(),
+        name: childName,
         dateOfBirth: form.dateOfBirth,
         diagnosisDate: form.diagnosisDate || undefined,
         medications,
         therapistName: form.therapistName.trim() || undefined,
         therapistEmail: form.therapistEmail.trim() || undefined,
         notes: form.notes.trim() || undefined,
+        reminderEmail,
+        reminderEnabled,
         createdAt: new Date().toISOString(),
       };
       onAdd(newChild);
       setSelectedChildId(newChild.id);
+    }
+
+    // Sync reminder subscription with Agent 1 backend
+    if (reminderEmail) {
+      const action = reminderEnabled ? 'subscribe' : 'unsubscribe';
+      fetch('/api/subscribe-reminder', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action,
+          email: reminderEmail,
+          childName,
+          timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+        }),
+      }).catch(() => {});
     }
 
     setSaved(true);
@@ -374,6 +405,47 @@ export default function Profiles({
                 className="form-input resize-none"
               />
             </FormField>
+
+            {/* Daily Reminder Agent subscription */}
+            <div className="bg-indigo-50 rounded-xl border border-indigo-100 p-4 space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  {form.reminderEnabled ? (
+                    <Bell size={16} className="text-indigo-600" />
+                  ) : (
+                    <BellOff size={16} className="text-slate-400" />
+                  )}
+                  <span className="text-sm font-semibold text-slate-700">Daily Symptom Reminder</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setForm(f => ({ ...f, reminderEnabled: !f.reminderEnabled }))}
+                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                    form.reminderEnabled ? 'bg-indigo-600' : 'bg-slate-300'
+                  }`}
+                >
+                  <span
+                    className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${
+                      form.reminderEnabled ? 'translate-x-6' : 'translate-x-1'
+                    }`}
+                  />
+                </button>
+              </div>
+              <p className="text-xs text-slate-500">
+                Receive a daily email reminder at 7 PM if you haven't logged symptoms yet.
+              </p>
+              {form.reminderEnabled && (
+                <FormField label="Reminder Email">
+                  <input
+                    type="email"
+                    value={form.reminderEmail}
+                    onChange={e => setForm(f => ({ ...f, reminderEmail: e.target.value }))}
+                    placeholder="parent@example.com"
+                    className="form-input"
+                  />
+                </FormField>
+              )}
+            </div>
 
             <div className="flex gap-3 pt-2">
               <button
