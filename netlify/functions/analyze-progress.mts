@@ -151,9 +151,9 @@ Rules:
 
   try {
     const response = await anthropic.messages.create({
-      model: 'claude-opus-4-6',
-      max_tokens: 1024,
-      thinking: { type: 'adaptive' },
+      model: 'claude-opus-4-7',
+      max_tokens: 12000,
+      thinking: { type: 'enabled', budget_tokens: 8000 },
       messages: [{ role: 'user', content: prompt }],
     });
 

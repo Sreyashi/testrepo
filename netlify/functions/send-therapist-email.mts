@@ -105,7 +105,7 @@ Parent notes: "${log.parentNotes || 'No additional notes'}"
 Write a concise 2-3 sentence clinical narrative summary for the therapist. Focus on what stands out today versus recent trends. Be factual and professional. Do not use bullet points.`;
 
   const response = await anthropic.messages.create({
-    model: 'claude-opus-4-6',
+    model: 'claude-opus-4-7',
     max_tokens: 300,
     messages: [{ role: 'user', content: prompt }],
   });
